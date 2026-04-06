@@ -2,14 +2,14 @@
 
 namespace Botble\Tpuploader;
 
-use Illuminate\Support\Facades\Schema;
 use Botble\PluginManagement\Abstracts\PluginOperationAbstract;
+use Illuminate\Support\Facades\Schema;
 
 class Plugin extends PluginOperationAbstract
 {
     public static function remove(): void
     {
-        Schema::dropIfExists('TPUploaders');
-        Schema::dropIfExists('TPUploaders_translations');
+        Schema::dropIfExists('t_p_uploaders_translations');
+        Schema::dropIfExists('t_p_uploaders');
     }
 }

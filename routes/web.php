@@ -19,7 +19,5 @@ AdminHelper::registerRoutes(function () {
             'middleware' => 'preventDemo',
             'permission' => 'theme.index',
         ]);
-
-        Route::resource('', TPUploaderController::class)->parameters(['' => 'tpuploader']);
     });
 });

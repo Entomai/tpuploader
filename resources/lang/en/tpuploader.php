@@ -1,8 +1,6 @@
 <?php
 
 return [
-    'name' => 'TPUploader',
-    'create' => 'New uploader',
     'upload_plugin' => 'Upload plugin ZIP',
     'upload_plugin_description' => 'Install custom plugins directly from a ZIP file without copying folders into platform/plugins manually.',
     'plugin_archive' => 'Plugin ZIP file',
