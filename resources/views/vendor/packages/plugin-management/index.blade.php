@@ -89,6 +89,24 @@
                                 <label class="form-check form-switch mt-lg-4 pt-lg-1">
                                     <input
                                         type="checkbox"
+                                        name="allow_replace"
+                                        value="1"
+                                        class="form-check-input"
+                                        @checked(old('allow_replace'))
+                                    >
+                                    <span class="form-check-label">
+                                        {{ trans('plugins/tpuploader::tpuploader.allow_replace') }}
+                                    </span>
+                                </label>
+                                <div class="form-hint ps-lg-5">
+                                    {{ trans('plugins/tpuploader::tpuploader.allow_replace_plugin_help') }}
+                                </div>
+                            </div>
+
+                            <div class="col-12 col-lg-auto">
+                                <label class="form-check form-switch mt-lg-4 pt-lg-1">
+                                    <input
+                                        type="checkbox"
                                         name="activate"
                                         value="1"
                                         class="form-check-input"

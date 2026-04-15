@@ -14,7 +14,8 @@ class TPUploaderController extends BaseController
     {
         $result = $themeUploadService->upload(
             $request->file('theme_archive'),
-            $request->boolean('activate')
+            $request->boolean('activate'),
+            $request->boolean('allow_replace')
         );
 
         return redirect()
@@ -26,7 +27,8 @@ class TPUploaderController extends BaseController
     {
         $result = $pluginUploadService->upload(
             $request->file('plugin_archive'),
-            $request->boolean('activate')
+            $request->boolean('activate'),
+            $request->boolean('allow_replace')
         );
 
         return redirect()

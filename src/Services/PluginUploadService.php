@@ -6,6 +6,7 @@ use Botble\Base\Facades\BaseHelper;
 use Botble\Base\Supports\Zipper;
 use Botble\PluginManagement\Services\PluginService;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
@@ -20,13 +21,11 @@ class PluginUploadService
         protected PluginService $pluginService
     ) {}
 
-    public function upload(UploadedFile $archive, bool $activate = false): array
+    public function upload(UploadedFile $archive, bool $activate = false, bool $allowReplace = false): array
     {
         $workingPath = storage_path('app/tpuploader/plugin-imports/'.Str::uuid());
         $archivePath = $workingPath.'/plugin.zip';
         $extractPath = $workingPath.'/extract';
-        $pluginPath = null;
-        $removeInstalledPluginOnError = false;
 
         try {
             $this->files->ensureDirectoryExists($workingPath);
@@ -48,52 +47,19 @@ class PluginUploadService
             }
 
             $plugin = $this->resolvePluginFolderName($pluginRoot, $extractPath, $pluginData);
+            $pluginName = Arr::get($pluginData, 'name', $plugin);
             $pluginPath = plugin_path($plugin);
 
-            if ($this->files->isDirectory($pluginPath)) {
+            if (! $this->files->isDirectory($pluginPath)) {
+                return $this->installPlugin($plugin, $pluginName, $pluginRoot, $pluginPath, $activate);
+            }
+
+            if (! $allowReplace) {
                 throw new RuntimeException(trans('plugins/tpuploader::tpuploader.plugin_already_exists', ['name' => $plugin]));
             }
 
-            if (! $this->files->moveDirectory($pluginRoot, $pluginPath)) {
-                throw new RuntimeException(trans('plugins/tpuploader::tpuploader.plugin_archive_move_failed'));
-            }
-
-            $removeInstalledPluginOnError = true;
-
-            $this->pluginService->validatePlugin($plugin, true);
-
-            $removeInstalledPluginOnError = false;
-
-            $pluginName = Arr::get($pluginData, 'name', $plugin);
-
-            if (! $activate) {
-                return [
-                    'error' => false,
-                    'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_success', ['name' => $pluginName]),
-                ];
-            }
-
-            $result = $this->pluginService->activate($plugin);
-
-            if ($result['error']) {
-                return [
-                    'error' => true,
-                    'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_activate_failed', [
-                        'name' => $pluginName,
-                        'message' => $result['message'],
-                    ]),
-                ];
-            }
-
-            return [
-                'error' => false,
-                'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_and_activate_success', ['name' => $pluginName]),
-            ];
+            return $this->replacePlugin($plugin, $pluginName, $pluginRoot, $pluginPath, $activate, $workingPath);
         } catch (Throwable $exception) {
-            if ($pluginPath && $removeInstalledPluginOnError && $this->files->isDirectory($pluginPath)) {
-                $this->files->deleteDirectory($pluginPath);
-            }
-
             if (! $exception instanceof RuntimeException) {
                 BaseHelper::logError($exception);
             }
@@ -107,6 +73,183 @@ class PluginUploadService
         } finally {
             $this->files->deleteDirectory($workingPath);
         }
+    }
+
+    protected function installPlugin(
+        string $plugin,
+        string $pluginName,
+        string $pluginRoot,
+        string $pluginPath,
+        bool $activate
+    ): array {
+        if (! $this->files->moveDirectory($pluginRoot, $pluginPath)) {
+            throw new RuntimeException(trans('plugins/tpuploader::tpuploader.plugin_archive_move_failed'));
+        }
+
+        try {
+            $this->pluginService->validatePlugin($plugin, true);
+        } catch (Throwable $exception) {
+            $this->files->deleteDirectory($pluginPath);
+
+            throw $exception;
+        }
+
+        if (! $activate) {
+            return [
+                'error' => false,
+                'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_success', ['name' => $pluginName]),
+            ];
+        }
+
+        $result = $this->pluginService->activate($plugin);
+
+        if ($result['error']) {
+            return [
+                'error' => true,
+                'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_activate_failed', [
+                    'name' => $pluginName,
+                    'message' => $result['message'],
+                ]),
+            ];
+        }
+
+        return [
+            'error' => false,
+            'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_and_activate_success', ['name' => $pluginName]),
+        ];
+    }
+
+    protected function replacePlugin(
+        string $plugin,
+        string $pluginName,
+        string $pluginRoot,
+        string $pluginPath,
+        bool $activate,
+        string $workingPath
+    ): array {
+        $backupPath = $workingPath.'/backup/plugin';
+        $wasActive = in_array($plugin, get_active_plugins());
+
+        if (! $this->backupExistingDirectory($pluginPath, $backupPath)) {
+            throw new RuntimeException(trans('plugins/tpuploader::tpuploader.plugin_replace_backup_failed'));
+        }
+
+        if (! $this->files->moveDirectory($pluginRoot, $pluginPath)) {
+            $message = trans('plugins/tpuploader::tpuploader.plugin_archive_move_failed');
+
+            if (! $this->restoreBackedUpDirectory($backupPath, $pluginPath)) {
+                $message = trans('plugins/tpuploader::tpuploader.plugin_replace_restore_failed', [
+                    'message' => $message,
+                ]);
+            }
+
+            throw new RuntimeException($message);
+        }
+
+        try {
+            $this->pluginService->validatePlugin($plugin, true);
+        } catch (Throwable $exception) {
+            $message = $exception instanceof RuntimeException
+                ? $exception->getMessage()
+                : trans('plugins/tpuploader::tpuploader.plugin_upload_failed');
+
+            if (! $this->restoreBackedUpDirectory($backupPath, $pluginPath)) {
+                $message = trans('plugins/tpuploader::tpuploader.plugin_replace_restore_failed', [
+                    'message' => $message,
+                ]);
+            }
+
+            if (! $exception instanceof RuntimeException) {
+                BaseHelper::logError($exception);
+            }
+
+            throw new RuntimeException($message);
+        }
+
+        $migrationsStarted = false;
+
+        $result = $this->pluginService->updatePlugin($plugin, function () use (
+            $activate,
+            $backupPath,
+            $plugin,
+            $pluginName,
+            $pluginPath,
+            &$migrationsStarted,
+            $wasActive
+        ) {
+            try {
+                $published = $this->pluginService->publishAssets($plugin);
+
+                if ($published['error']) {
+                    throw new RuntimeException($published['message']);
+                }
+
+                $this->pluginService->publishTranslations($plugin);
+
+                $migrationsStarted = true;
+
+                $this->pluginService->runMigrations($plugin);
+
+                if ($activate && ! $wasActive) {
+                    $activationResult = $this->pluginService->activate($plugin);
+
+                    if ($activationResult['error']) {
+                        return [
+                            'error' => true,
+                            'message' => trans('plugins/tpuploader::tpuploader.plugin_update_activate_failed', [
+                                'name' => $pluginName,
+                                'message' => $activationResult['message'],
+                            ]),
+                        ];
+                    }
+
+                    $this->files->deleteDirectory($backupPath);
+
+                    return [
+                        'error' => false,
+                        'message' => trans('plugins/tpuploader::tpuploader.plugin_update_and_activate_success', ['name' => $pluginName]),
+                    ];
+                }
+
+                $this->files->deleteDirectory($backupPath);
+
+                return [
+                    'error' => false,
+                    'message' => trans('plugins/tpuploader::tpuploader.plugin_update_success', ['name' => $pluginName]),
+                ];
+            } catch (Throwable $exception) {
+                if (! $exception instanceof RuntimeException) {
+                    BaseHelper::logError($exception);
+                }
+
+                $message = $exception instanceof RuntimeException
+                    ? $exception->getMessage()
+                    : trans('plugins/tpuploader::tpuploader.plugin_upload_failed');
+
+                if (! $migrationsStarted) {
+                    if (! $this->restoreBackedUpDirectory($backupPath, $pluginPath)) {
+                        $message = trans('plugins/tpuploader::tpuploader.plugin_replace_restore_failed', [
+                            'message' => $message,
+                        ]);
+                    }
+
+                    return [
+                        'error' => true,
+                        'message' => $message,
+                    ];
+                }
+
+                return [
+                    'error' => true,
+                    'message' => trans('plugins/tpuploader::tpuploader.plugin_update_failed_after_replace', [
+                        'name' => $pluginName,
+                        'message' => $message,
+                    ]),
+                ];
+            }
+        });
+
+        return $this->normalizeUpdateResult($result);
     }
 
     protected function guardArchive(string $archivePath): void
@@ -221,5 +364,41 @@ class PluginUploadService
         $candidate = preg_replace('/[^a-z0-9_-]+/', '-', $candidate) ?: '';
 
         return trim($candidate, '-_');
+    }
+
+    protected function backupExistingDirectory(string $currentPath, string $backupPath): bool
+    {
+        $this->files->ensureDirectoryExists(dirname($backupPath));
+
+        return $this->files->moveDirectory($currentPath, $backupPath);
+    }
+
+    protected function restoreBackedUpDirectory(string $backupPath, string $targetPath): bool
+    {
+        if (! $this->files->isDirectory($backupPath)) {
+            return false;
+        }
+
+        if ($this->files->isDirectory($targetPath)) {
+            $this->files->deleteDirectory($targetPath);
+        }
+
+        $this->files->ensureDirectoryExists(dirname($targetPath));
+
+        return $this->files->moveDirectory($backupPath, $targetPath);
+    }
+
+    protected function normalizeUpdateResult(mixed $result): array
+    {
+        if ($result instanceof JsonResponse) {
+            return $result->getData(true);
+        }
+
+        return is_array($result)
+            ? $result
+            : [
+                'error' => true,
+                'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_failed'),
+            ];
     }
 }

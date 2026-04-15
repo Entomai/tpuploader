@@ -21,7 +21,7 @@ class ThemeUploadService
         protected ThemeService $themeService
     ) {}
 
-    public function upload(UploadedFile $archive, bool $activate = false): array
+    public function upload(UploadedFile $archive, bool $activate = false, bool $allowReplace = false): array
     {
         $workingPath = storage_path('app/tpuploader/theme-imports/'.Str::uuid());
         $archivePath = $workingPath.'/theme.zip';
@@ -47,42 +47,18 @@ class ThemeUploadService
             }
 
             $theme = $this->resolveThemeFolderName($themeRoot, $extractPath, $themeData);
+            $themeName = Arr::get($themeData, 'name', $theme);
+            $themePath = theme_path($theme);
 
-            if ($this->files->isDirectory(theme_path($theme))) {
+            if (! $this->files->isDirectory($themePath)) {
+                return $this->installTheme($theme, $themeName, $themeRoot, $themePath, $activate);
+            }
+
+            if (! $allowReplace) {
                 throw new RuntimeException(trans('plugins/tpuploader::tpuploader.theme_already_exists', ['name' => $theme]));
             }
 
-            if (! $this->files->moveDirectory($themeRoot, theme_path($theme))) {
-                throw new RuntimeException(trans('plugins/tpuploader::tpuploader.theme_archive_move_failed'));
-            }
-
-            ThemeManager::refreshThemes();
-
-            $themeName = Arr::get($themeData, 'name', $theme);
-
-            if (! $activate) {
-                return [
-                    'error' => false,
-                    'message' => trans('plugins/tpuploader::tpuploader.theme_upload_success', ['name' => $themeName]),
-                ];
-            }
-
-            $result = $this->themeService->activate($theme);
-
-            if ($result['error']) {
-                return [
-                    'error' => true,
-                    'message' => trans('plugins/tpuploader::tpuploader.theme_upload_activate_failed', [
-                        'name' => $themeName,
-                        'message' => $result['message'],
-                    ]),
-                ];
-            }
-
-            return [
-                'error' => false,
-                'message' => trans('plugins/tpuploader::tpuploader.theme_upload_and_activate_success', ['name' => $themeName]),
-            ];
+            return $this->replaceTheme($theme, $themeName, $themeRoot, $themePath, $activate, $workingPath);
         } catch (Throwable $exception) {
             if (! $exception instanceof RuntimeException) {
                 BaseHelper::logError($exception);
@@ -97,6 +73,131 @@ class ThemeUploadService
         } finally {
             $this->files->deleteDirectory($workingPath);
         }
+    }
+
+    protected function installTheme(
+        string $theme,
+        string $themeName,
+        string $themeRoot,
+        string $themePath,
+        bool $activate
+    ): array {
+        if (! $this->files->moveDirectory($themeRoot, $themePath)) {
+            throw new RuntimeException(trans('plugins/tpuploader::tpuploader.theme_archive_move_failed'));
+        }
+
+        ThemeManager::refreshThemes();
+
+        if (! $activate) {
+            return [
+                'error' => false,
+                'message' => trans('plugins/tpuploader::tpuploader.theme_upload_success', ['name' => $themeName]),
+            ];
+        }
+
+        $result = $this->themeService->activate($theme);
+
+        if ($result['error']) {
+            return [
+                'error' => true,
+                'message' => trans('plugins/tpuploader::tpuploader.theme_upload_activate_failed', [
+                    'name' => $themeName,
+                    'message' => $result['message'],
+                ]),
+            ];
+        }
+
+        return [
+            'error' => false,
+            'message' => trans('plugins/tpuploader::tpuploader.theme_upload_and_activate_success', ['name' => $themeName]),
+        ];
+    }
+
+    protected function replaceTheme(
+        string $theme,
+        string $themeName,
+        string $themeRoot,
+        string $themePath,
+        bool $activate,
+        string $workingPath
+    ): array {
+        $backupPath = $workingPath.'/backup/theme';
+        $isActiveTheme = setting('theme') === $theme;
+
+        if (! $this->backupExistingDirectory($themePath, $backupPath)) {
+            throw new RuntimeException(trans('plugins/tpuploader::tpuploader.theme_replace_backup_failed'));
+        }
+
+        if (! $this->files->moveDirectory($themeRoot, $themePath)) {
+            $message = trans('plugins/tpuploader::tpuploader.theme_archive_move_failed');
+
+            if (! $this->restoreBackedUpDirectory($backupPath, $themePath)) {
+                $message = trans('plugins/tpuploader::tpuploader.theme_replace_restore_failed', [
+                    'message' => $message,
+                ]);
+            }
+
+            throw new RuntimeException($message);
+        }
+
+        ThemeManager::refreshThemes();
+
+        try {
+            $published = $this->themeService->publishAssets($theme);
+
+            if ($published['error']) {
+                throw new RuntimeException($published['message']);
+            }
+        } catch (Throwable $exception) {
+            if (! $exception instanceof RuntimeException) {
+                BaseHelper::logError($exception);
+            }
+
+            $message = $exception instanceof RuntimeException
+                ? $exception->getMessage()
+                : trans('plugins/tpuploader::tpuploader.theme_upload_failed');
+
+            if (! $this->restoreBackedUpDirectory($backupPath, $themePath)) {
+                $message = trans('plugins/tpuploader::tpuploader.theme_replace_restore_failed', [
+                    'message' => $message,
+                ]);
+            }
+
+            ThemeManager::refreshThemes();
+
+            return [
+                'error' => true,
+                'message' => $message,
+            ];
+        }
+
+        if ($activate && ! $isActiveTheme) {
+            $result = $this->themeService->activate($theme);
+
+            if ($result['error']) {
+                return [
+                    'error' => true,
+                    'message' => trans('plugins/tpuploader::tpuploader.theme_update_activate_failed', [
+                        'name' => $themeName,
+                        'message' => $result['message'],
+                    ]),
+                ];
+            }
+
+            $this->files->deleteDirectory($backupPath);
+
+            return [
+                'error' => false,
+                'message' => trans('plugins/tpuploader::tpuploader.theme_update_and_activate_success', ['name' => $themeName]),
+            ];
+        }
+
+        $this->files->deleteDirectory($backupPath);
+
+        return [
+            'error' => false,
+            'message' => trans('plugins/tpuploader::tpuploader.theme_update_success', ['name' => $themeName]),
+        ];
     }
 
     protected function guardArchive(string $archivePath): void
@@ -211,5 +312,27 @@ class ThemeUploadService
         $candidate = preg_replace('/[^a-z0-9_-]+/', '-', $candidate) ?: '';
 
         return trim($candidate, '-_');
+    }
+
+    protected function backupExistingDirectory(string $currentPath, string $backupPath): bool
+    {
+        $this->files->ensureDirectoryExists(dirname($backupPath));
+
+        return $this->files->moveDirectory($currentPath, $backupPath);
+    }
+
+    protected function restoreBackedUpDirectory(string $backupPath, string $targetPath): bool
+    {
+        if (! $this->files->isDirectory($backupPath)) {
+            return false;
+        }
+
+        if ($this->files->isDirectory($targetPath)) {
+            $this->files->deleteDirectory($targetPath);
+        }
+
+        $this->files->ensureDirectoryExists(dirname($targetPath));
+
+        return $this->files->moveDirectory($backupPath, $targetPath);
     }
 }

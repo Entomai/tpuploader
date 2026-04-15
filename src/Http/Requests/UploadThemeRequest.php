@@ -11,6 +11,7 @@ class UploadThemeRequest extends Request
         return [
             'theme_archive' => ['required', 'file', 'mimes:zip', 'max:102400'],
             'activate' => ['nullable', 'boolean'],
+            'allow_replace' => ['nullable', 'boolean'],
         ];
     }
 
