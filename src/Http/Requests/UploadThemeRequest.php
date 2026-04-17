@@ -9,9 +9,10 @@ class UploadThemeRequest extends Request
     public function rules(): array
     {
         return [
-            'theme_archive' => ['required', 'file', 'mimes:zip', 'max:102400'],
-            'activate' => ['nullable', 'boolean'],
-            'allow_replace' => ['nullable', 'boolean'],
+            'theme_archive' => ['required_without:theme_archives', 'nullable', 'file', 'mimes:zip', 'max:102400'],
+            'theme_archives' => ['required_without:theme_archive', 'nullable', 'array'],
+            'theme_archives.*' => ['file', 'mimes:zip', 'max:102400'],
+            'skip_update' => ['nullable', 'boolean'],
         ];
     }
 
@@ -19,6 +20,8 @@ class UploadThemeRequest extends Request
     {
         return [
             'theme_archive' => trans('plugins/tpuploader::tpuploader.theme_archive'),
+            'theme_archives' => trans('plugins/tpuploader::tpuploader.theme_archive'),
+            'theme_archives.*' => trans('plugins/tpuploader::tpuploader.theme_archive'),
         ];
     }
 }

@@ -1,7 +1,8 @@
 @extends(BaseHelper::getAdminMasterLayoutTemplate())
 
 @php
-    $isThemeUploaderOpen = $errors->has('theme_archive');
+    $themeArchiveError = $errors->first('theme_archive') ?: $errors->first('theme_archives') ?: $errors->first('theme_archives.*');
+    $isThemeUploaderOpen = $themeArchiveError !== '';
     $themeUploaderClasses = $isThemeUploaderOpen ? 'collapse mb-4 show' : 'collapse mb-4';
     $themeUploaderExpanded = $isThemeUploaderOpen ? 'true' : 'false';
 @endphp
@@ -42,6 +43,18 @@
                             method="POST"
                             enctype="multipart/form-data"
                             class="row g-3 align-items-end"
+                            data-bb-toggle="tpuploader-upload-form"
+                            data-upload-field="theme_archive"
+                            data-list-title="{{ trans('plugins/tpuploader::tpuploader.theme_upload_list_title') }}"
+                            data-waiting-label="{{ trans('plugins/tpuploader::tpuploader.upload_waiting') }}"
+                            data-uploading-label="{{ trans('plugins/tpuploader::tpuploader.upload_uploading') }}"
+                            data-success-label="{{ trans('plugins/tpuploader::tpuploader.upload_success') }}"
+                            data-error-label="{{ trans('plugins/tpuploader::tpuploader.upload_error') }}"
+                            data-log-label="{{ trans('plugins/tpuploader::tpuploader.upload_log') }}"
+                            data-no-files-message="{{ trans('plugins/tpuploader::tpuploader.upload_no_files') }}"
+                            data-request-failed-message="{{ trans('plugins/tpuploader::tpuploader.upload_request_failed') }}"
+                            data-batch-success-message="{{ trans('plugins/tpuploader::tpuploader.upload_batch_success') }}"
+                            data-batch-error-message="{{ trans('plugins/tpuploader::tpuploader.upload_batch_error') }}"
                         >
                             @csrf
 
@@ -55,14 +68,16 @@
                                 <input
                                     id="theme_archive"
                                     type="file"
-                                    name="theme_archive"
+                                    name="theme_archives[]"
                                     accept=".zip,application/zip"
-                                    class="form-control @error('theme_archive') is-invalid @enderror"
+                                    class="form-control {{ $themeArchiveError ? 'is-invalid' : '' }}"
+                                    data-tpuploader-file-input
+                                    multiple
                                     required
                                 >
-                                @error('theme_archive')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
+                                @if ($themeArchiveError)
+                                    <div class="invalid-feedback">{{ $themeArchiveError }}</div>
+                                @endif
                                 <div class="form-hint">
                                     {{ trans('plugins/tpuploader::tpuploader.theme_archive_help') }}
                                 </div>
@@ -72,33 +87,18 @@
                                 <label class="form-check form-switch mt-lg-4 pt-lg-1">
                                     <input
                                         type="checkbox"
-                                        name="allow_replace"
+                                        name="skip_update"
                                         value="1"
                                         class="form-check-input"
-                                        @checked(old('allow_replace'))
+                                        @checked(old('skip_update'))
                                     >
                                     <span class="form-check-label">
-                                        {{ trans('plugins/tpuploader::tpuploader.allow_replace') }}
+                                        {{ trans('plugins/tpuploader::tpuploader.skip_update') }}
                                     </span>
                                 </label>
                                 <div class="form-hint ps-lg-5">
-                                    {{ trans('plugins/tpuploader::tpuploader.allow_replace_theme_help') }}
+                                    {{ trans('plugins/tpuploader::tpuploader.skip_update_theme_help') }}
                                 </div>
-                            </div>
-
-                            <div class="col-12 col-lg-auto">
-                                <label class="form-check form-switch mt-lg-4 pt-lg-1">
-                                    <input
-                                        type="checkbox"
-                                        name="activate"
-                                        value="1"
-                                        class="form-check-input"
-                                        @checked(old('activate'))
-                                    >
-                                    <span class="form-check-label">
-                                        {{ trans('plugins/tpuploader::tpuploader.activate_after_upload') }}
-                                    </span>
-                                </label>
                             </div>
 
                             <div class="col-12 col-lg-auto">
@@ -110,6 +110,13 @@
                                 >
                                     {{ trans('plugins/tpuploader::tpuploader.upload') }}
                                 </x-core::button>
+                            </div>
+
+                            <div class="col-12">
+                                <div
+                                    class="tpuploader-upload-list d-none"
+                                    data-tpuploader-upload-list
+                                ></div>
                             </div>
                         </form>
                     </div>
@@ -238,6 +245,8 @@
         </div>
     @endif
 @stop
+
+@include('plugins/tpuploader::partials.multi-upload')
 
 @push('header')
     <style>

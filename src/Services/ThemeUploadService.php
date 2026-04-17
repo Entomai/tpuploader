@@ -21,7 +21,7 @@ class ThemeUploadService
         protected ThemeService $themeService
     ) {}
 
-    public function upload(UploadedFile $archive, bool $activate = false, bool $allowReplace = false): array
+    public function upload(UploadedFile $archive, bool $activate = false, bool $skipUpdate = false): array
     {
         $workingPath = storage_path('app/tpuploader/theme-imports/'.Str::uuid());
         $archivePath = $workingPath.'/theme.zip';
@@ -54,11 +54,7 @@ class ThemeUploadService
                 return $this->installTheme($theme, $themeName, $themeRoot, $themePath, $activate);
             }
 
-            if (! $allowReplace) {
-                throw new RuntimeException(trans('plugins/tpuploader::tpuploader.theme_already_exists', ['name' => $theme]));
-            }
-
-            return $this->replaceTheme($theme, $themeName, $themeRoot, $themePath, $activate, $workingPath);
+            return $this->replaceTheme($theme, $themeName, $themeRoot, $themePath, $activate, $workingPath, $skipUpdate);
         } catch (Throwable $exception) {
             if (! $exception instanceof RuntimeException) {
                 BaseHelper::logError($exception);
@@ -119,7 +115,8 @@ class ThemeUploadService
         string $themeRoot,
         string $themePath,
         bool $activate,
-        string $workingPath
+        string $workingPath,
+        bool $skipUpdate
     ): array {
         $backupPath = $workingPath.'/backup/theme';
         $isActiveTheme = setting('theme') === $theme;
@@ -141,6 +138,10 @@ class ThemeUploadService
         }
 
         ThemeManager::refreshThemes();
+
+        if ($skipUpdate) {
+            return $this->finishThemeFilesOnlyReplacement($theme, $themeName, $backupPath, $activate, $isActiveTheme);
+        }
 
         try {
             $published = $this->themeService->publishAssets($theme);
@@ -197,6 +198,42 @@ class ThemeUploadService
         return [
             'error' => false,
             'message' => trans('plugins/tpuploader::tpuploader.theme_update_success', ['name' => $themeName]),
+        ];
+    }
+
+    protected function finishThemeFilesOnlyReplacement(
+        string $theme,
+        string $themeName,
+        string $backupPath,
+        bool $activate,
+        bool $isActiveTheme
+    ): array {
+        if ($activate && ! $isActiveTheme) {
+            $result = $this->themeService->activate($theme);
+
+            if ($result['error']) {
+                return [
+                    'error' => true,
+                    'message' => trans('plugins/tpuploader::tpuploader.theme_replace_activate_failed', [
+                        'name' => $themeName,
+                        'message' => $result['message'],
+                    ]),
+                ];
+            }
+
+            $this->files->deleteDirectory($backupPath);
+
+            return [
+                'error' => false,
+                'message' => trans('plugins/tpuploader::tpuploader.theme_replace_and_activate_success', ['name' => $themeName]),
+            ];
+        }
+
+        $this->files->deleteDirectory($backupPath);
+
+        return [
+            'error' => false,
+            'message' => trans('plugins/tpuploader::tpuploader.theme_replace_success', ['name' => $themeName]),
         ];
     }
 

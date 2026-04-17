@@ -4,6 +4,7 @@ namespace Botble\Tpuploader\Services;
 
 use Botble\Base\Facades\BaseHelper;
 use Botble\Base\Supports\Zipper;
+use Botble\PluginManagement\PluginManifest;
 use Botble\PluginManagement\Services\PluginService;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\JsonResponse;
@@ -18,10 +19,11 @@ class PluginUploadService
 {
     public function __construct(
         protected Filesystem $files,
-        protected PluginService $pluginService
+        protected PluginService $pluginService,
+        protected PluginManifest $pluginManifest
     ) {}
 
-    public function upload(UploadedFile $archive, bool $activate = false, bool $allowReplace = false): array
+    public function upload(UploadedFile $archive, bool $activate = false, bool $skipUpdate = false): array
     {
         $workingPath = storage_path('app/tpuploader/plugin-imports/'.Str::uuid());
         $archivePath = $workingPath.'/plugin.zip';
@@ -54,11 +56,7 @@ class PluginUploadService
                 return $this->installPlugin($plugin, $pluginName, $pluginRoot, $pluginPath, $activate);
             }
 
-            if (! $allowReplace) {
-                throw new RuntimeException(trans('plugins/tpuploader::tpuploader.plugin_already_exists', ['name' => $plugin]));
-            }
-
-            return $this->replacePlugin($plugin, $pluginName, $pluginRoot, $pluginPath, $activate, $workingPath);
+            return $this->replacePlugin($plugin, $pluginName, $pluginRoot, $pluginPath, $activate, $workingPath, $skipUpdate);
         } catch (Throwable $exception) {
             if (! $exception instanceof RuntimeException) {
                 BaseHelper::logError($exception);
@@ -125,7 +123,8 @@ class PluginUploadService
         string $pluginRoot,
         string $pluginPath,
         bool $activate,
-        string $workingPath
+        string $workingPath,
+        bool $skipUpdate
     ): array {
         $backupPath = $workingPath.'/backup/plugin';
         $wasActive = in_array($plugin, get_active_plugins());
@@ -164,6 +163,10 @@ class PluginUploadService
             }
 
             throw new RuntimeException($message);
+        }
+
+        if ($skipUpdate) {
+            return $this->finishPluginFilesOnlyReplacement($plugin, $pluginName, $backupPath, $activate, $wasActive);
         }
 
         $migrationsStarted = false;
@@ -250,6 +253,45 @@ class PluginUploadService
         });
 
         return $this->normalizeUpdateResult($result);
+    }
+
+    protected function finishPluginFilesOnlyReplacement(
+        string $plugin,
+        string $pluginName,
+        string $backupPath,
+        bool $activate,
+        bool $wasActive
+    ): array {
+        $this->pluginService->clearCache();
+        $this->pluginManifest->generateManifest();
+
+        if ($activate && ! $wasActive) {
+            $activationResult = $this->pluginService->activate($plugin);
+
+            if ($activationResult['error']) {
+                return [
+                    'error' => true,
+                    'message' => trans('plugins/tpuploader::tpuploader.plugin_replace_activate_failed', [
+                        'name' => $pluginName,
+                        'message' => $activationResult['message'],
+                    ]),
+                ];
+            }
+
+            $this->files->deleteDirectory($backupPath);
+
+            return [
+                'error' => false,
+                'message' => trans('plugins/tpuploader::tpuploader.plugin_replace_and_activate_success', ['name' => $pluginName]),
+            ];
+        }
+
+        $this->files->deleteDirectory($backupPath);
+
+        return [
+            'error' => false,
+            'message' => trans('plugins/tpuploader::tpuploader.plugin_replace_success', ['name' => $pluginName]),
+        ];
     }
 
     protected function guardArchive(string $archivePath): void

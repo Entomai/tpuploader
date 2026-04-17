@@ -1,7 +1,8 @@
 @extends(BaseHelper::getAdminMasterLayoutTemplate())
 
 @php
-    $isPluginUploaderOpen = $errors->has('plugin_archive');
+    $pluginArchiveError = $errors->first('plugin_archive') ?: $errors->first('plugin_archives') ?: $errors->first('plugin_archives.*');
+    $isPluginUploaderOpen = $pluginArchiveError !== '';
     $pluginUploaderClasses = $isPluginUploaderOpen ? 'collapse mb-4 show' : 'collapse mb-4';
     $pluginUploaderExpanded = $isPluginUploaderOpen ? 'true' : 'false';
 @endphp
@@ -59,6 +60,18 @@
                             method="POST"
                             enctype="multipart/form-data"
                             class="row g-3 align-items-end"
+                            data-bb-toggle="tpuploader-upload-form"
+                            data-upload-field="plugin_archive"
+                            data-list-title="{{ trans('plugins/tpuploader::tpuploader.plugin_upload_list_title') }}"
+                            data-waiting-label="{{ trans('plugins/tpuploader::tpuploader.upload_waiting') }}"
+                            data-uploading-label="{{ trans('plugins/tpuploader::tpuploader.upload_uploading') }}"
+                            data-success-label="{{ trans('plugins/tpuploader::tpuploader.upload_success') }}"
+                            data-error-label="{{ trans('plugins/tpuploader::tpuploader.upload_error') }}"
+                            data-log-label="{{ trans('plugins/tpuploader::tpuploader.upload_log') }}"
+                            data-no-files-message="{{ trans('plugins/tpuploader::tpuploader.upload_no_files') }}"
+                            data-request-failed-message="{{ trans('plugins/tpuploader::tpuploader.upload_request_failed') }}"
+                            data-batch-success-message="{{ trans('plugins/tpuploader::tpuploader.upload_batch_success') }}"
+                            data-batch-error-message="{{ trans('plugins/tpuploader::tpuploader.upload_batch_error') }}"
                         >
                             @csrf
 
@@ -72,14 +85,16 @@
                                 <input
                                     id="plugin_archive"
                                     type="file"
-                                    name="plugin_archive"
+                                    name="plugin_archives[]"
                                     accept=".zip,application/zip"
-                                    class="form-control @error('plugin_archive') is-invalid @enderror"
+                                    class="form-control {{ $pluginArchiveError ? 'is-invalid' : '' }}"
+                                    data-tpuploader-file-input
+                                    multiple
                                     required
                                 >
-                                @error('plugin_archive')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
+                                @if ($pluginArchiveError)
+                                    <div class="invalid-feedback">{{ $pluginArchiveError }}</div>
+                                @endif
                                 <div class="form-hint">
                                     {{ trans('plugins/tpuploader::tpuploader.plugin_archive_help') }}
                                 </div>
@@ -89,17 +104,17 @@
                                 <label class="form-check form-switch mt-lg-4 pt-lg-1">
                                     <input
                                         type="checkbox"
-                                        name="allow_replace"
+                                        name="skip_update"
                                         value="1"
                                         class="form-check-input"
-                                        @checked(old('allow_replace'))
+                                        @checked(old('skip_update'))
                                     >
                                     <span class="form-check-label">
-                                        {{ trans('plugins/tpuploader::tpuploader.allow_replace') }}
+                                        {{ trans('plugins/tpuploader::tpuploader.skip_update') }}
                                     </span>
                                 </label>
                                 <div class="form-hint ps-lg-5">
-                                    {{ trans('plugins/tpuploader::tpuploader.allow_replace_plugin_help') }}
+                                    {{ trans('plugins/tpuploader::tpuploader.skip_update_plugin_help') }}
                                 </div>
                             </div>
 
@@ -127,6 +142,13 @@
                                 >
                                     {{ trans('plugins/tpuploader::tpuploader.upload') }}
                                 </x-core::button>
+                            </div>
+
+                            <div class="col-12">
+                                <div
+                                    class="tpuploader-upload-list d-none"
+                                    data-tpuploader-upload-list
+                                ></div>
                             </div>
                         </form>
                     </div>
@@ -343,6 +365,8 @@
         @style(['display: none' => $plugins->isNotEmpty()])
     />
 @stop
+
+@include('plugins/tpuploader::partials.multi-upload')
 
 @push('header')
     <style>
