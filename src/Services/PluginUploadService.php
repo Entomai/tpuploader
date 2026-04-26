@@ -99,16 +99,30 @@ class PluginUploadService
             ];
         }
 
-        $result = $this->pluginService->activate($plugin);
+        try {
+            $result = $this->pluginService->activate($plugin);
 
-        if ($result['error']) {
-            return [
-                'error' => true,
-                'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_activate_failed', [
-                    'name' => $pluginName,
-                    'message' => $result['message'],
-                ]),
-            ];
+            if ($result['error']) {
+                $this->pluginService->deactivate($plugin);
+                
+                return [
+                    'error' => true,
+                    'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_activate_failed', [
+                        'name' => $pluginName,
+                        'message' => $result['message'],
+                    ]),
+                ];
+            }
+        } catch (Throwable $exception) {
+            // Force deactivate the plugin to prevent system crash on next request
+            try {
+                $this->pluginService->deactivate($plugin);
+            } catch (Throwable $deactivateException) {
+                // If deactivate also fails, remove the plugin folder completely as a last resort
+                $this->files->deleteDirectory($pluginPath);
+            }
+
+            throw new RuntimeException("Plugin activation caused a fatal error: " . $exception->getMessage() . ' in ' . $exception->getFile() . ':' . $exception->getLine(), 0, $exception);
         }
 
         return [
@@ -194,16 +208,28 @@ class PluginUploadService
                 $this->pluginService->runMigrations($plugin);
 
                 if ($activate && ! $wasActive) {
-                    $activationResult = $this->pluginService->activate($plugin);
+                    try {
+                        $activationResult = $this->pluginService->activate($plugin);
 
-                    if ($activationResult['error']) {
-                        return [
-                            'error' => true,
-                            'message' => trans('plugins/tpuploader::tpuploader.plugin_update_activate_failed', [
-                                'name' => $pluginName,
-                                'message' => $activationResult['message'],
-                            ]),
-                        ];
+                        if ($activationResult['error']) {
+                            $this->pluginService->deactivate($plugin);
+                            
+                            return [
+                                'error' => true,
+                                'message' => trans('plugins/tpuploader::tpuploader.plugin_update_activate_failed', [
+                                    'name' => $pluginName,
+                                    'message' => $activationResult['message'],
+                                ]),
+                            ];
+                        }
+                    } catch (Throwable $exception) {
+                        try {
+                            $this->pluginService->deactivate($plugin);
+                        } catch (Throwable $deactivateException) {
+                            // Ignored, outer catch will restore backup
+                        }
+
+                        throw new RuntimeException("Plugin activation caused a fatal error: " . $exception->getMessage() . ' in ' . $exception->getFile() . ':' . $exception->getLine(), 0, $exception);
                     }
 
                     $this->files->deleteDirectory($backupPath);
@@ -266,16 +292,28 @@ class PluginUploadService
         $this->pluginManifest->generateManifest();
 
         if ($activate && ! $wasActive) {
-            $activationResult = $this->pluginService->activate($plugin);
+            try {
+                $activationResult = $this->pluginService->activate($plugin);
 
-            if ($activationResult['error']) {
-                return [
-                    'error' => true,
-                    'message' => trans('plugins/tpuploader::tpuploader.plugin_replace_activate_failed', [
-                        'name' => $pluginName,
-                        'message' => $activationResult['message'],
-                    ]),
-                ];
+                if ($activationResult['error']) {
+                    $this->pluginService->deactivate($plugin);
+                    
+                    return [
+                        'error' => true,
+                        'message' => trans('plugins/tpuploader::tpuploader.plugin_replace_activate_failed', [
+                            'name' => $pluginName,
+                            'message' => $activationResult['message'],
+                        ]),
+                    ];
+                }
+            } catch (Throwable $exception) {
+                try {
+                    $this->pluginService->deactivate($plugin);
+                } catch (Throwable $deactivateException) {
+                    $this->restoreBackedUpDirectory($backupPath, plugin_path($plugin));
+                }
+
+                throw new RuntimeException("Plugin activation caused a fatal error: " . $exception->getMessage() . ' in ' . $exception->getFile() . ':' . $exception->getLine(), 0, $exception);
             }
 
             $this->files->deleteDirectory($backupPath);

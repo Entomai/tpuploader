@@ -4,6 +4,7 @@ namespace Botble\Tpuploader\Providers;
 
 use Botble\Base\Supports\ServiceProvider;
 use Botble\Base\Traits\LoadAndPublishDataTrait;
+use Botble\Tpuploader\Package\PackageServiceProvider;
 
 class TPUploaderServiceProvider extends ServiceProvider
 {
@@ -11,6 +12,8 @@ class TPUploaderServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->app->register(PackageServiceProvider::class);
+
         $this
             ->setNamespace('plugins/tpuploader')
             ->loadAndPublishTranslations()
