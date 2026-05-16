@@ -134,6 +134,36 @@
                             </div>
 
                             <div class="col-12 col-lg-auto">
+                                <label class="form-check form-switch mt-lg-4 pt-lg-1">
+                                    <input
+                                        type="checkbox"
+                                        name="recompile_assets"
+                                        value="1"
+                                        class="form-check-input"
+                                        @checked(old('recompile_assets'))
+                                    >
+                                    <span class="form-check-label">
+                                        Recompile Assets (NPM)
+                                    </span>
+                                </label>
+                            </div>
+
+                            <div class="col-12 col-lg-auto">
+                                <label class="form-check form-switch mt-lg-4 pt-lg-1">
+                                    <input
+                                        type="checkbox"
+                                        name="clear_view_cache"
+                                        value="1"
+                                        class="form-check-input"
+                                        checked
+                                    >
+                                    <span class="form-check-label">
+                                        Refresh Compiled Views
+                                    </span>
+                                </label>
+                            </div>
+
+                            <div class="col-12 col-lg-auto">
                                 <x-core::button
                                     type="submit"
                                     color="primary"

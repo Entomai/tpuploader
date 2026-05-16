@@ -23,7 +23,13 @@ class PluginUploadService
         protected PluginManifest $pluginManifest
     ) {}
 
-    public function upload(UploadedFile $archive, bool $activate = false, bool $skipUpdate = false): array
+    public function upload(
+        UploadedFile $archive,
+        bool $activate = false,
+        bool $skipUpdate = false,
+        bool $recompileAssets = false,
+        bool $clearViewCache = false
+    ): array
     {
         $workingPath = storage_path('app/tpuploader/plugin-imports/'.Str::uuid());
         $archivePath = $workingPath.'/plugin.zip';
@@ -53,10 +59,10 @@ class PluginUploadService
             $pluginPath = plugin_path($plugin);
 
             if (! $this->files->isDirectory($pluginPath)) {
-                return $this->installPlugin($plugin, $pluginName, $pluginRoot, $pluginPath, $activate);
+                return $this->installPlugin($plugin, $pluginName, $pluginRoot, $pluginPath, $activate, $recompileAssets, $clearViewCache);
             }
 
-            return $this->replacePlugin($plugin, $pluginName, $pluginRoot, $pluginPath, $activate, $workingPath, $skipUpdate);
+            return $this->replacePlugin($plugin, $pluginName, $pluginRoot, $pluginPath, $activate, $workingPath, $skipUpdate, $recompileAssets, $clearViewCache);
         } catch (Throwable $exception) {
             if (! $exception instanceof RuntimeException) {
                 BaseHelper::logError($exception);
@@ -78,7 +84,9 @@ class PluginUploadService
         string $pluginName,
         string $pluginRoot,
         string $pluginPath,
-        bool $activate
+        bool $activate,
+        bool $recompileAssets = false,
+        bool $clearViewCache = false
     ): array {
         if (! $this->files->moveDirectory($pluginRoot, $pluginPath)) {
             throw new RuntimeException(trans('plugins/tpuploader::tpuploader.plugin_archive_move_failed'));
@@ -90,6 +98,16 @@ class PluginUploadService
             $this->files->deleteDirectory($pluginPath);
 
             throw $exception;
+        }
+
+        if ($recompileAssets) {
+            $this->recompileAssets($pluginPath);
+        }
+        
+        $this->pluginService->publishAssets($plugin);
+        
+        if ($clearViewCache) {
+            \Illuminate\Support\Facades\Artisan::call('view:clear');
         }
 
         if (! $activate) {
@@ -138,7 +156,9 @@ class PluginUploadService
         string $pluginPath,
         bool $activate,
         string $workingPath,
-        bool $skipUpdate
+        bool $skipUpdate,
+        bool $recompileAssets = false,
+        bool $clearViewCache = false
     ): array {
         $backupPath = $workingPath.'/backup/plugin';
         $wasActive = in_array($plugin, get_active_plugins());
@@ -192,9 +212,15 @@ class PluginUploadService
             $pluginName,
             $pluginPath,
             &$migrationsStarted,
-            $wasActive
+            $wasActive,
+            $recompileAssets,
+            $clearViewCache
         ) {
             try {
+                if ($recompileAssets) {
+                    $this->recompileAssets($pluginPath);
+                }
+
                 $published = $this->pluginService->publishAssets($plugin);
 
                 if ($published['error']) {
@@ -233,6 +259,10 @@ class PluginUploadService
                     }
 
                     $this->files->deleteDirectory($backupPath);
+                    
+                    if ($clearViewCache) {
+                        \Illuminate\Support\Facades\Artisan::call('view:clear');
+                    }
 
                     return [
                         'error' => false,
@@ -241,6 +271,10 @@ class PluginUploadService
                 }
 
                 $this->files->deleteDirectory($backupPath);
+
+                if ($clearViewCache) {
+                    \Illuminate\Support\Facades\Artisan::call('view:clear');
+                }
 
                 return [
                     'error' => false,
@@ -480,5 +514,39 @@ class PluginUploadService
                 'error' => true,
                 'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_failed'),
             ];
+    }
+    
+    protected function recompileAssets(string $pluginPath): void
+    {
+        $packageJsonPath = $pluginPath . '/package.json';
+        if (!$this->files->exists($packageJsonPath)) {
+            return;
+        }
+
+        $packageJson = json_decode($this->files->get($packageJsonPath), true);
+        if (!$packageJson || empty($packageJson['scripts'])) {
+            return;
+        }
+
+        $buildCommand = null;
+        if (isset($packageJson['scripts']['build:css'])) {
+            $buildCommand = 'npm run build:css';
+        } elseif (isset($packageJson['scripts']['build'])) {
+            $buildCommand = 'npm run build';
+        } elseif (isset($packageJson['scripts']['prod'])) {
+            $buildCommand = 'npm run prod';
+        }
+
+        if (!$buildCommand) {
+            return;
+        }
+
+        $process = \Symfony\Component\Process\Process::fromShellCommandline('npm install && ' . $buildCommand, $pluginPath);
+        $process->setTimeout(300);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            throw new RuntimeException("Asset recompilation failed: " . $process->getErrorOutput());
+        }
     }
 }

@@ -37,7 +37,9 @@ class TPUploaderController extends BaseController
             $results[] = $this->formatUploadResult($file, $pluginUploadService->upload(
                 $file,
                 $request->boolean('activate'),
-                $request->boolean('skip_update')
+                $request->boolean('skip_update'),
+                $request->boolean('recompile_assets'),
+                $request->boolean('clear_view_cache')
             ));
         }
 
