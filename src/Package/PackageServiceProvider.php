@@ -11,12 +11,12 @@ use Botble\Base\Supports\ServiceProvider;
 use Botble\PluginManagement\Events\RenderingPluginListingPage;
 use Botble\PluginManagement\Services\PluginService;
 use Botble\Setting\PanelSections\SettingOthersPanelSection;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Str;
 use Botble\Tpuploader\Package\Http\Controllers\EntomaiPluginsController;
 use Botble\Tpuploader\Package\PrivateUpdater\PluginUpdateClient;
 use Botble\Tpuploader\Package\PrivateUpdater\PluginUpdateInstaller;
 use Botble\Tpuploader\Package\PrivateUpdater\PluginUpdateRegistry;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -58,7 +58,7 @@ class PackageServiceProvider extends ServiceProvider
                     Route::get('/', [EntomaiPluginsController::class, 'index'])->name('index');
                     Route::get('/catalog', [EntomaiPluginsController::class, 'catalog'])->name('catalog');
                     Route::get('/catalog/{id}', [EntomaiPluginsController::class, 'catalogProduct'])->name('catalog-product')->where('id', '[0-9]+');
-                    });
+                });
             });
         }
 
@@ -128,8 +128,8 @@ class PackageServiceProvider extends ServiceProvider
         try {
             $existingKeys = array_column($items, 'key');
 
-            $registry = new PluginUpdateRegistry();
-            $client = new PluginUpdateClient();
+            $registry = new PluginUpdateRegistry;
+            $client = new PluginUpdateClient;
             $updates = $client->check($registry->plugins());
 
             foreach (is_array($updates) ? $updates : [] as $plugin => $update) {
@@ -226,7 +226,7 @@ class PackageServiceProvider extends ServiceProvider
             }
 
             $plugin = (string) ($item['slug'] ?? '');
-            $registry = new PluginUpdateRegistry();
+            $registry = new PluginUpdateRegistry;
             $pluginData = $registry->find($plugin);
 
             if (! $pluginData) {
@@ -236,7 +236,7 @@ class PackageServiceProvider extends ServiceProvider
                 ];
             }
 
-            $response = (new PluginUpdateInstaller())->install($pluginData, [
+            $response = (new PluginUpdateInstaller)->install($pluginData, [
                 'version' => $item['latest_version'] ?? null,
                 'latest_version' => $item['latest_version'] ?? null,
                 'update_id' => $item['update_id'] ?? null,
@@ -248,4 +248,3 @@ class PackageServiceProvider extends ServiceProvider
         }
     }
 }
-

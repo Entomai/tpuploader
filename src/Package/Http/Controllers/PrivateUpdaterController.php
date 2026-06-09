@@ -4,11 +4,11 @@ namespace Botble\Tpuploader\Package\Http\Controllers;
 
 use Botble\Base\Http\Controllers\BaseController;
 use Botble\PluginManagement\Services\PluginService;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Botble\Tpuploader\Package\PrivateUpdater\PluginUpdateClient;
 use Botble\Tpuploader\Package\PrivateUpdater\PluginUpdateInstaller;
 use Botble\Tpuploader\Package\PrivateUpdater\PluginUpdateRegistry;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PrivateUpdaterController extends BaseController
 {
