@@ -88,7 +88,7 @@ class PluginUpdateRegistry
             'provider' => (string) Arr::get($manifest, 'provider', ''),
             'version' => (string) Arr::get($manifest, 'version', '0.0.0'),
             'is_free' => $isFree,
-            'is_active_in_cms' => in_array($path, get_active_plugins()),
+            'is_active_in_cms' => in_array($path, get_active_plugins(), true),
             'product_identity_valid' => $productIdentityValid,
             'manifest_product_id' => $manifestProductId,
             'expected_product_id' => $expectedProductId,

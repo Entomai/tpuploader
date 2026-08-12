@@ -3,8 +3,11 @@
 namespace Botble\Tpuploader\Http\Controllers;
 
 use Botble\Base\Http\Controllers\BaseController;
+use Botble\Base\Http\Responses\BaseHttpResponse;
+use Botble\Tpuploader\Http\Requests\BulkManagePluginsRequest;
 use Botble\Tpuploader\Http\Requests\UploadPluginRequest;
 use Botble\Tpuploader\Http\Requests\UploadThemeRequest;
+use Botble\Tpuploader\Services\BulkPluginActionService;
 use Botble\Tpuploader\Services\PluginUploadService;
 use Botble\Tpuploader\Services\ThemeUploadService;
 use Illuminate\Http\JsonResponse;
@@ -14,6 +17,57 @@ use Illuminate\Http\UploadedFile;
 
 class TPUploaderController extends BaseController
 {
+    public function activatePlugins(
+        BulkManagePluginsRequest $request,
+        BulkPluginActionService $bulkPluginActionService
+    ): BaseHttpResponse {
+        return $this->respondToPluginAction(
+            $bulkPluginActionService->activate($request->validated('plugins')),
+            'activate'
+        );
+    }
+
+    public function deactivatePlugins(
+        BulkManagePluginsRequest $request,
+        BulkPluginActionService $bulkPluginActionService
+    ): BaseHttpResponse {
+        return $this->respondToPluginAction(
+            $bulkPluginActionService->deactivate($request->validated('plugins')),
+            'deactivate'
+        );
+    }
+
+    public function removePlugins(
+        BulkManagePluginsRequest $request,
+        BulkPluginActionService $bulkPluginActionService
+    ): BaseHttpResponse {
+        return $this->respondToPluginAction(
+            $bulkPluginActionService->remove($request->validated('plugins')),
+            'remove'
+        );
+    }
+
+    protected function respondToPluginAction(array $results, string $action): BaseHttpResponse
+    {
+        $failed = count(array_filter($results, fn (array $result): bool => $result['error']));
+        $successful = count($results) - $failed;
+        $translationKey = sprintf(
+            'plugins/tpuploader::tpuploader.bulk_%s_%s',
+            $action,
+            $failed > 0 ? 'finished_with_errors' : 'finished'
+        );
+
+        return $this
+            ->httpResponse()
+            ->setError($failed > 0)
+            ->setData([
+                'results' => $results,
+                'successful' => $successful,
+                'failed' => $failed,
+            ])
+            ->setMessage(trans($translationKey, ['success' => $successful, 'failed' => $failed]));
+    }
+
     public function uploadTheme(UploadThemeRequest $request, ThemeUploadService $themeUploadService): JsonResponse|RedirectResponse
     {
         $results = [];

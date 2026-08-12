@@ -10,8 +10,10 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 use Throwable;
 use ZipArchive;
 
@@ -29,8 +31,7 @@ class PluginUploadService
         bool $skipUpdate = false,
         bool $recompileAssets = false,
         bool $clearViewCache = false
-    ): array
-    {
+    ): array {
         $workingPath = storage_path('app/tpuploader/plugin-imports/'.Str::uuid());
         $archivePath = $workingPath.'/plugin.zip';
         $extractPath = $workingPath.'/extract';
@@ -103,11 +104,11 @@ class PluginUploadService
         if ($recompileAssets) {
             $this->recompileAssets($pluginPath);
         }
-        
+
         $this->pluginService->publishAssets($plugin);
-        
+
         if ($clearViewCache) {
-            \Illuminate\Support\Facades\Artisan::call('view:clear');
+            Artisan::call('view:clear');
         }
 
         if (! $activate) {
@@ -122,7 +123,7 @@ class PluginUploadService
 
             if ($result['error']) {
                 $this->pluginService->deactivate($plugin);
-                
+
                 return [
                     'error' => true,
                     'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_activate_failed', [
@@ -140,7 +141,7 @@ class PluginUploadService
                 $this->files->deleteDirectory($pluginPath);
             }
 
-            throw new RuntimeException("Plugin activation caused a fatal error: " . $exception->getMessage() . ' in ' . $exception->getFile() . ':' . $exception->getLine(), 0, $exception);
+            throw new RuntimeException('Plugin activation caused a fatal error: '.$exception->getMessage().' in '.$exception->getFile().':'.$exception->getLine(), 0, $exception);
         }
 
         return [
@@ -239,7 +240,7 @@ class PluginUploadService
 
                         if ($activationResult['error']) {
                             $this->pluginService->deactivate($plugin);
-                            
+
                             return [
                                 'error' => true,
                                 'message' => trans('plugins/tpuploader::tpuploader.plugin_update_activate_failed', [
@@ -255,13 +256,13 @@ class PluginUploadService
                             // Ignored, outer catch will restore backup
                         }
 
-                        throw new RuntimeException("Plugin activation caused a fatal error: " . $exception->getMessage() . ' in ' . $exception->getFile() . ':' . $exception->getLine(), 0, $exception);
+                        throw new RuntimeException('Plugin activation caused a fatal error: '.$exception->getMessage().' in '.$exception->getFile().':'.$exception->getLine(), 0, $exception);
                     }
 
                     $this->files->deleteDirectory($backupPath);
-                    
+
                     if ($clearViewCache) {
-                        \Illuminate\Support\Facades\Artisan::call('view:clear');
+                        Artisan::call('view:clear');
                     }
 
                     return [
@@ -273,7 +274,7 @@ class PluginUploadService
                 $this->files->deleteDirectory($backupPath);
 
                 if ($clearViewCache) {
-                    \Illuminate\Support\Facades\Artisan::call('view:clear');
+                    Artisan::call('view:clear');
                 }
 
                 return [
@@ -331,7 +332,7 @@ class PluginUploadService
 
                 if ($activationResult['error']) {
                     $this->pluginService->deactivate($plugin);
-                    
+
                     return [
                         'error' => true,
                         'message' => trans('plugins/tpuploader::tpuploader.plugin_replace_activate_failed', [
@@ -347,7 +348,7 @@ class PluginUploadService
                     $this->restoreBackedUpDirectory($backupPath, plugin_path($plugin));
                 }
 
-                throw new RuntimeException("Plugin activation caused a fatal error: " . $exception->getMessage() . ' in ' . $exception->getFile() . ':' . $exception->getLine(), 0, $exception);
+                throw new RuntimeException('Plugin activation caused a fatal error: '.$exception->getMessage().' in '.$exception->getFile().':'.$exception->getLine(), 0, $exception);
             }
 
             $this->files->deleteDirectory($backupPath);
@@ -515,16 +516,16 @@ class PluginUploadService
                 'message' => trans('plugins/tpuploader::tpuploader.plugin_upload_failed'),
             ];
     }
-    
+
     protected function recompileAssets(string $pluginPath): void
     {
-        $packageJsonPath = $pluginPath . '/package.json';
-        if (!$this->files->exists($packageJsonPath)) {
+        $packageJsonPath = $pluginPath.'/package.json';
+        if (! $this->files->exists($packageJsonPath)) {
             return;
         }
 
         $packageJson = json_decode($this->files->get($packageJsonPath), true);
-        if (!$packageJson || empty($packageJson['scripts'])) {
+        if (! $packageJson || empty($packageJson['scripts'])) {
             return;
         }
 
@@ -537,16 +538,16 @@ class PluginUploadService
             $buildCommand = 'npm run prod';
         }
 
-        if (!$buildCommand) {
+        if (! $buildCommand) {
             return;
         }
 
-        $process = \Symfony\Component\Process\Process::fromShellCommandline('npm install && ' . $buildCommand, $pluginPath);
+        $process = Process::fromShellCommandline('npm install && '.$buildCommand, $pluginPath);
         $process->setTimeout(300);
         $process->run();
 
-        if (!$process->isSuccessful()) {
-            throw new RuntimeException("Asset recompilation failed: " . $process->getErrorOutput());
+        if (! $process->isSuccessful()) {
+            throw new RuntimeException('Asset recompilation failed: '.$process->getErrorOutput());
         }
     }
 }

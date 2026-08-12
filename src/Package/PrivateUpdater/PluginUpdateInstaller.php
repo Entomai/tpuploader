@@ -55,20 +55,19 @@ class PluginUpdateInstaller
 
                 try {
                     $this->replacePlugin($plugin['path'], $packageRoot);
+                    $pluginService->runMigrations($plugin['path']);
+                    $published = $pluginService->publishAssets($plugin['path']);
+
+                    if ($published['error']) {
+                        throw new RuntimeException($published['message']);
+                    }
+
+                    $pluginService->publishTranslations($plugin['path']);
                 } catch (Throwable $e) {
                     $this->restoreBackup($plugin['path'], $backupPath);
 
                     throw $e;
                 }
-
-                $pluginService->runMigrations($plugin['path']);
-                $published = $pluginService->publishAssets($plugin['path']);
-
-                if ($published['error']) {
-                    throw new RuntimeException($published['message']);
-                }
-
-                $pluginService->publishTranslations($plugin['path']);
 
                 $prefix = $plugin['license_prefix'] ?? '';
                 if ($prefix) {
@@ -114,7 +113,6 @@ class PluginUpdateInstaller
         ])
             ->acceptJson()
             ->asJson()
-            ->withoutVerifying()
             ->timeout(300)
             ->sink($zipPath)
             ->post($plugin['server'].'/api/external/update/'.rawurlencode($downloadIdentifier).'/download/main', [

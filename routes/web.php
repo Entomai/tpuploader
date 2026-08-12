@@ -13,6 +13,27 @@ AdminHelper::registerRoutes(function () {
             'permission' => 'plugins.index',
         ]);
 
+        Route::post('plugins/deactivate', [
+            'as' => 'plugins.deactivate',
+            'uses' => TPUploaderController::class.'@deactivatePlugins',
+            'middleware' => 'preventDemo',
+            'permission' => 'plugins.edit',
+        ]);
+
+        Route::post('plugins/activate', [
+            'as' => 'plugins.activate',
+            'uses' => TPUploaderController::class.'@activatePlugins',
+            'middleware' => 'preventDemo',
+            'permission' => 'plugins.edit',
+        ]);
+
+        Route::delete('plugins', [
+            'as' => 'plugins.remove',
+            'uses' => TPUploaderController::class.'@removePlugins',
+            'middleware' => 'preventDemo',
+            'permission' => 'plugins.remove',
+        ]);
+
         Route::post('themes/upload', [
             'as' => 'themes.upload',
             'uses' => TPUploaderController::class.'@uploadTheme',

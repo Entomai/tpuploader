@@ -141,7 +141,6 @@ class EntomaiPluginsController extends BaseController
                 'X-API-LANGUAGE' => app()->getLocale(),
             ])
                 ->acceptJson()
-                ->withoutVerifying()
                 ->timeout(15)
                 ->get($url, $query);
 
@@ -173,7 +172,6 @@ class EntomaiPluginsController extends BaseController
                 'X-API-LANGUAGE' => app()->getLocale(),
             ])
                 ->acceptJson()
-                ->withoutVerifying()
                 ->timeout(15)
                 ->get($url);
 

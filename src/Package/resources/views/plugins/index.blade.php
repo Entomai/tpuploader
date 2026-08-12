@@ -268,7 +268,7 @@
                                                                 class="btn btn-primary btn-sm"
                                                             >
                                                                 <x-core::icon name="ti ti-lock-open" class="me-1" />
-                                                                Activate License
+                                                                Sign in to activate
                                                             </a>
                                                         @endif
                                                     @endif

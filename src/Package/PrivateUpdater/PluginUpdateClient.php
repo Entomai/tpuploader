@@ -82,7 +82,6 @@ class PluginUpdateClient
             $response = Http::withHeaders($this->headers($first))
                 ->acceptJson()
                 ->asJson()
-                ->withoutVerifying()
                 ->timeout(120)
                 ->post($first['server'].'/api/external/update/check-bulk', [
                     'products' => $products,
@@ -106,7 +105,6 @@ class PluginUpdateClient
             $response = Http::withHeaders($this->headers($plugin))
                 ->acceptJson()
                 ->asJson()
-                ->withoutVerifying()
                 ->timeout(120)
                 ->post($plugin['server'].'/api/external/update/check', [
                     'product_id' => $plugin['product_id'],

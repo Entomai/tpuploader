@@ -154,7 +154,7 @@ abstract class BaseActivationController extends BaseController
 
         session()->forget($stateKey);
 
-        if ($status !== 'success' || ! $token) {
+        if ($status !== 'success' || ! is_string($token) || trim($token) === '') {
             session()->forget($urlKey);
 
             return redirect()
@@ -168,21 +168,13 @@ abstract class BaseActivationController extends BaseController
             return $response;
         }
 
-        $settings = setting()
-            ->set($this->pluginPrefix.'_client_token', $token)
-            ->set($this->pluginPrefix.'_client_license_code', $licenseCode)
-            ->set($this->pluginPrefix.'_client_product_id', $this->getProductId())
-            ->set($this->pluginPrefix.'_client_activation_url', session($urlKey, URL::to('/')));
-
-        if ($clientEmail) {
-            $settings->set($this->pluginPrefix.'_client_email', $clientEmail);
-        }
-
-        if ($clientName) {
-            $settings->set($this->pluginPrefix.'_client_name', $clientName);
-        }
-
-        $settings->save();
+        $this->storeLocalLicenseData(
+            (string) $token,
+            is_scalar($licenseCode) ? (string) $licenseCode : null,
+            is_scalar($clientEmail) ? (string) $clientEmail : null,
+            is_scalar($clientName) ? (string) $clientName : null,
+            (string) session($urlKey, URL::to('/'))
+        );
         session()->forget($urlKey);
 
         return redirect()
@@ -376,6 +368,30 @@ abstract class BaseActivationController extends BaseController
             ->set("{$p}_last_update_id", (string) ($update['update_id'] ?? ''))
             ->set("{$p}_last_update_checked_at", now()->toDateTimeString())
             ->save();
+    }
+
+    protected function storeLocalLicenseData(
+        string $token,
+        ?string $licenseCode,
+        ?string $clientEmail,
+        ?string $clientName,
+        string $activationUrl
+    ): void {
+        $settings = setting()
+            ->set($this->pluginPrefix.'_client_token', $token)
+            ->set($this->pluginPrefix.'_client_license_code', $licenseCode)
+            ->set($this->pluginPrefix.'_client_product_id', $this->getProductId())
+            ->set($this->pluginPrefix.'_client_activation_url', $activationUrl);
+
+        if (filled($clientEmail)) {
+            $settings->set($this->pluginPrefix.'_client_email', $clientEmail);
+        }
+
+        if (filled($clientName)) {
+            $settings->set($this->pluginPrefix.'_client_name', $clientName);
+        }
+
+        $settings->save();
     }
 
     protected function clearLocalLicenseData(): void
